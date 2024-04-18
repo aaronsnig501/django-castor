@@ -101,7 +101,7 @@ class CAStorage(FileSystemStorage):
             path = safe_join(self.location, *shards)
         except ValueError:
             raise SuspiciousOperation(
-                f"Attempted access to '{"/".join(shards)}' denied."
+                f"Attempted access to '{'/'.join(shards)}' denied."
             )
 
         return smart_str(os_path.normpath(path))
