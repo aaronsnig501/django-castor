@@ -1,4 +1,4 @@
-from hashlib import sha1, _Hash
+from hashlib import sha1
 from os import unlink, stat, path, listdir, rmdir
 from typing import Any, Callable, Iterator
 
@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import UploadedFile
 
 def hash_filename(
     filename: str,
-    digestmod: Callable[..., _Hash] = sha1,
+    digestmod: Callable[..., Any] = sha1,
     chunk_size: Any = UploadedFile.DEFAULT_CHUNK_SIZE
 ) -> str:
     """
@@ -27,7 +27,7 @@ def hash_filename(
 
 
 def hash_chunks(
-    iterator: Iterator[bytes], digestmod: Callable[..., _Hash] = sha1
+    iterator: Iterator[bytes], digestmod: Callable[..., Any] = sha1
 ) -> str:
     """
     Hash the contents of a string-yielding iterator.
