@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
+from os import path as os_path
+from typing import Self
 
-import os
-
+from django.core.files import File
 from django.core.exceptions import SuspiciousOperation
 from django.core.files.storage import FileSystemStorage
 from django.utils._os import safe_join
 from django.utils.encoding import smart_str
 
-from djcastor import utils
+from djcastor.utils import hash_filename, hash_chunks, rm_file_and_empty_parents, shard
 
 
 class CAStorage(FileSystemStorage):
-
     """
     A content-addressable storage backend for Django.
 
@@ -50,79 +49,82 @@ class CAStorage(FileSystemStorage):
         on two parameters: *width* and *depth*. The following examples show how
         these affect the sharding:
 
-            >>> digest = '1f09d30c707d53f3d16c530dd73d70a6ce7596a9'
+            >>> digest = "1f09d30c707d53f3d16c530dd73d70a6ce7596a9"
 
-            >>> print shard(digest, width=2, depth=2)
+            >>> print(shard(digest, width=2, depth=2))
             1f/09/1f09d30c707d53f3d16c530dd73d70a6ce7596a9
 
-            >>> print shard(digest, width=2, depth=3)
+            >>> print(shard(digest, width=2, depth=3))
             1f/09/d3/1f09d30c707d53f3d16c530dd73d70a6ce7596a9
 
-            >>> print shard(digest, width=3, depth=2)
+            >>> print(shard(digest, width=3, depth=2))
             1f0/9d3/1f09d30c707d53f3d16c530dd73d70a6ce7596a9
-
     """
 
-    def __init__(self, location=None, base_url=None, keep_extension=True,
-                 sharding=(2, 2)):
+    def __init__(
+        self: Self,
+        location: str | None = None,
+        base_url: str | None = None,
+        keep_extension: bool = True,
+        sharding: tuple[int, ...] = (2, 2)
+    ) -> None:
         # Avoid a confusing issue when you don't have a trailing slash: URLs
         # are generated which point to the parent. This is due to the behavior
         # of `urlparse.urljoin()`.
-        if base_url is not None and not base_url.endswith('/'):
-            base_url += '/'
+        if base_url is not None and not base_url.endswith("/"):
+            base_url += "/"
 
         super(CAStorage, self).__init__(location=location, base_url=base_url)
 
         self.shard_width, self.shard_depth = sharding
         self.keep_extension = keep_extension
-
-    @staticmethod
-    def get_available_name(name):
+        
+    def get_available_name(self: Self, name: str, max_length: int | None = None) -> str:
         """Return the name as-is; in CAS, given names are ignored anyway."""
-
         return name
 
-    def digest(self, content):
-        if hasattr(content, 'temporary_file_path'):
-            return utils.hash_filename(content.temporary_file_path())
-        digest = utils.hash_chunks(content.chunks())
+    def digest(self: Self, content: File) -> str:
+        if hasattr(content, "temporary_file_path"):
+            return hash_filename(content.temporary_file_path())  # type: ignore
+        digest = hash_chunks(content.chunks())
         content.seek(0)
         return digest
 
     def shard(self, hexdigest):
-        return list(utils.shard(hexdigest, self.shard_width, self.shard_depth,
+        return list(shard(hexdigest, self.shard_width, self.shard_depth,
                                 rest_only=False))
 
-    def path(self, hexdigest):
-        shards = self.shard(hexdigest)
+    def path(self: Self, name: str) -> str:
+        shards = self.shard(name)
 
         try:
             path = safe_join(self.location, *shards)
         except ValueError:
-            raise SuspiciousOperation("Attempted access to '%s' denied." %
-                                      ('/'.join(shards),))
+            raise SuspiciousOperation(
+                f"Attempted access to '{"/".join(shards)}' denied."
+            )
 
-        return smart_str(os.path.normpath(path))
+        return smart_str(os_path.normpath(path))
 
-    def url(self, name):
-        return super(CAStorage, self).url('/'.join(self.shard(name)))
+    def url(self: Self, name: str | None) -> str:
+        return super(CAStorage, self).url("/".join(self.shard(name)))
 
-    def delete(self, name, sure=False):
+    def delete(self: Self, name: str, sure: bool = False) -> None:
         if not sure:
             # Ignore automatic deletions; we don't know how many different
             # records point to one file.
             return
 
         path = name
-        if os.path.sep not in path:
+        if path.sep not in path: # type: ignore
             path = self.path(name)
-        utils.rm_file_and_empty_parents(path, root=self.location)
+        rm_file_and_empty_parents(path, root=self.location)
 
-    def _save(self, name, content):
+    def _save(self: Self, name: str, content: File) -> str:
         digest = self.digest(content)
         if self.keep_extension:
-            digest += os.path.splitext(name)[1]
+            digest += os_path.splitext(name)[1]
         path = self.path(digest)
-        if os.path.exists(path):
+        if os_path.exists(path):
             return digest
-        return super(CAStorage, self)._save(digest, content)
+        return super(CAStorage, self)._save(digest, content)  # type: ignore

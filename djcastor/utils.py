@@ -1,43 +1,41 @@
-# -*- coding: utf-8 -*-
-
-import hashlib
-import os
+from hashlib import sha1, _Hash
+from os import unlink, stat, path, listdir, rmdir
+from typing import Any, Callable, Iterator
 
 from django.core.files import File
 from django.core.files.uploadedfile import UploadedFile
 
 
-def hash_filename(filename, digestmod=hashlib.sha1,
-                  chunk_size=UploadedFile.DEFAULT_CHUNK_SIZE):
-
+def hash_filename(
+    filename: str,
+    digestmod: Callable[..., _Hash] = sha1,
+    chunk_size: Any = UploadedFile.DEFAULT_CHUNK_SIZE
+) -> str:
     """
     Return the hash of the contents of a filename, using chunks.
-
         >>> import os.path as p
         >>> filename = p.join(p.abspath(p.dirname(__file__)), 'models.py')
         >>> hash_filename(filename)
         'da39a3ee5e6b4b0d3255bfef95601890afd80709'
-
     """
 
     fileobj = File(open(filename))
     try:
-        return hash_chunks(fileobj.chunks(chunk_size=chunk_size))
+        return hash_chunks(fileobj.chunks(chunk_size=chunk_size), digestmod)
     finally:
         fileobj.close()
 
 
-def hash_chunks(iterator, digestmod=hashlib.sha1):
-
+def hash_chunks(
+    iterator: Iterator[bytes], digestmod: Callable[..., _Hash] = sha1
+) -> str:
     """
     Hash the contents of a string-yielding iterator.
-
         >>> import hashlib
         >>> digest = hashlib.sha1('abc').hexdigest()
         >>> strings = iter(['a', 'b', 'c'])
         >>> hash_chunks(strings, digestmod=hashlib.sha1) == digest
         True
-
     """
 
     digest = digestmod()
@@ -46,8 +44,7 @@ def hash_chunks(iterator, digestmod=hashlib.sha1):
     return digest.hexdigest()
 
 
-def shard(string, width, depth, rest_only=False):
-
+def shard(string: str, width: int, depth: int, rest_only: bool = False) -> Iterator[str]:
     """
     Shard the given string by a width and depth. Returns a generator.
 
@@ -72,10 +69,9 @@ def shard(string, width, depth, rest_only=False):
 
         >>> list(shard(digest, 2, 2, rest_only=True))
         ['1f', '09', 'd30c707d53f3d16c530dd73d70a6ce7596a9']
-
     """
 
-    for i in xrange(depth):
+    for i in range(depth):
         yield string[(width * i):(width * (i + 1))]
 
     if rest_only:
@@ -84,16 +80,18 @@ def shard(string, width, depth, rest_only=False):
         yield string
 
 
-def rm_file_and_empty_parents(filename, root=None):
+def rm_file_and_empty_parents(filename: str, root: str | None = None) -> None:
     """Delete a file, keep removing empty parent dirs up to `root`."""
+    
+    root_stat: Any = None
 
     if root:
-        root_stat = os.stat(root)
+        root_stat = stat(root)
 
-    os.unlink(filename)
-    directory = os.path.dirname(filename)
-    while not (root and os.path.samestat(root_stat, os.stat(directory))):
-        if os.listdir(directory):
+    unlink(filename)
+    directory = path.dirname(filename)
+    while not (root and path.samestat(root_stat, stat(directory))):
+        if listdir(directory):
             break
-        os.rmdir(directory)
-        directory = os.path.dirname(directory)
+        rmdir(directory)
+        directory = path.dirname(directory)
